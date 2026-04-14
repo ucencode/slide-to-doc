@@ -14,6 +14,8 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 - preserve original structure, hierarchy, and layout
 - include all visible text: titles, subtitles, bullets, labels, captions
 - maintain list formatting and indentation where present
+- reproduce tables using plain text or markdown table format
+- for multi-column layouts, transcribe left to right, top to bottom
 - do not interpret, explain, or summarize
 - do not add commentary or descriptions of images/diagrams
 - if text is partially visible or unclear, make best effort
@@ -21,33 +23,50 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 
 REFINE_PROMPTS = {
     "clean": """Clean the following OCR text:
-- fix broken words and grammar
-- remove noise and repetition
-- keep original meaning
-- do NOT summarize
+- fix OCR artifacts: misread characters (l/1, O/0, rn/m), broken words, stray symbols
+- fix obvious grammar/spelling errors caused by OCR, not the original author
+- merge sentences split across page boundaries
+- remove repeated headers, footers, and page numbers
+- preserve the original structure: headings, lists, paragraphs
+- do NOT rephrase, summarize, or add content
+- do NOT change the author's word choices or style
 
 Return clean readable text.""",
 
     "summary": """Convert this into concise study notes:
-- use bullet points
-- keep only key ideas
-- remove explanations that are not essential
-- max 5–8 bullets per concept
-- avoid academic language
-- use practical examples
-- make it easy to understand quickly""",
+- organize by topic, not by page order
+- group related ideas under a heading, then 5–8 bullets per heading
+- keep only key ideas and practical examples from the source
+- drop abstract filler and non-essential explanations
+- avoid academic language — use plain, direct wording
+- make it easy to scan and understand quickly""",
 
-    "deep": """Extract and structure the content into:
+    "deep": """Transform the content into a comprehensive, book-style document. Structure it as follows:
 
-- Concept:
-- Core Idea (1 sentence):
-- Key Points:
-- Real-world analogy:
+# [Document Title]
 
-Keep it concise but meaningful.
-- avoid academic language
-- use practical examples
-- make it easy to understand quickly"""
+## Introduction
+Brief overview of what this document covers and why it matters.
+
+## [Topic Section]
+For each major topic or concept found in the content:
+
+### [Subtopic / Key Concept]
+- Write in full prose paragraphs, not bullet points
+- Explain the concept thoroughly with context
+- Include real-world examples and analogies to aid understanding
+- Clarify the "why" behind each idea, not just the "what"
+- Connect ideas to each other where relevant
+
+## Summary
+Recap the most important takeaways in a few paragraphs.
+
+Guidelines:
+- Use proper Markdown headings (##, ###) to reflect document hierarchy
+- Write in clear, plain language — avoid academic jargon
+- Preserve all key information from the source; do not omit details
+- Expand on ideas where needed to make them fully understandable
+- Do not use excessive bullet points — prefer flowing prose"""
 }
 
 LANG_INSTRUCTION = {
