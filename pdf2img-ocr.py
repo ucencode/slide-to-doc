@@ -74,8 +74,10 @@ LANG_INSTRUCTION = {
     "id": "Respond and deliver the output in Bahasa Indonesia."
 }
 
-VISION_MODEL_KEYWORDS = ["qwen3-vl", "qwen2.5vl", "deepseek-ocr", "llama3.2-vision", "gemma4", "ministral-3", "glm-ocr"]
+VISION_MODEL_KEYWORDS = ["qwen3.5", "qwen3-vl", "qwen2.5vl", "deepseek-ocr", "llama3.2-vision", "gemma4", "ministral-3", "glm-ocr"]
 REFINE_MODEL_KEYWORDS  = ["glm-5.1", "gemma4", "qwen3.5", "gpt-oss"]
+
+REFINE_TEMPERATURE = {"clean": 0, "summary": 0, "deep": 0.4}
 
 
 # ── ollama model discovery ─────────────────────────────────
@@ -89,7 +91,7 @@ def list_models(keywords: list[str]) -> list[str]:
     return models
 
 # ── stage 1: OCR ───────────────────────────────────────────
-def ocr_pdf(path: str, dpi: int = 200) -> str:
+def ocr_pdf(path: str, dpi: int = 200, num_predict: int = 4096) -> str:
     print(f"[init] loading PDF: {path}")
     start_total = time.time()
 
@@ -101,7 +103,7 @@ def ocr_pdf(path: str, dpi: int = 200) -> str:
     total_tokens = 0
 
     for i, page in enumerate(pages):
-        text, tokens = extract_page(i, page, len(pages), ocr_model)
+        text, tokens = extract_page(i, page, len(pages), ocr_model, num_predict)
         total_tokens += tokens
         full_text.append(f"--- Page {i+1} ---\n{text}")
 
@@ -109,7 +111,7 @@ def ocr_pdf(path: str, dpi: int = 200) -> str:
     return "\n\n".join(full_text), total_tokens, len(pages)
 
 
-def extract_page(i: int, page, total_pages: int, ocr_model: str) -> tuple[str, int]:
+def extract_page(i: int, page, total_pages: int, ocr_model: str, num_predict: int = 4096) -> tuple[str, int]:
     page_start = time.time()
     print(f"[page {i+1}/{total_pages}] encoding image...", end=" ", flush=True)
 
@@ -122,7 +124,7 @@ def extract_page(i: int, page, total_pages: int, ocr_model: str) -> tuple[str, i
     try:
         response: ChatResponse = chat(
             model=ocr_model,
-            options={"temperature": 0, "think": False, "num_predict": 4096},
+            options={"temperature": 0, "think": False, "num_predict": num_predict},
             messages=[
                 {
                     "role": "system",
@@ -191,13 +193,14 @@ def ask_language() -> str:
 # ── stage 2: refine ────────────────────────────────────────
 def refine(text: str, mode: str, lang: str, model: str) -> str:
     prompt = REFINE_PROMPTS[mode] + "\n\n" + LANG_INSTRUCTION[lang]
-    print(f"\n[refine] mode={mode} lang={lang} model={model}")
+    temp = REFINE_TEMPERATURE.get(mode, 0)
+    print(f"\n[refine] mode={mode} lang={lang} model={model} temp={temp}")
     print(f"[refine] sending {len(text)} chars...", end=" ", flush=True)
 
     start = time.time()
     response: ChatResponse = chat(
         model=model,
-        options={"temperature": 0},
+        options={"temperature": temp},
         messages=[
             {"role": "system", "content": prompt},
             {"role": "user", "content": text}
@@ -213,6 +216,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="PDF OCR Pipeline")
     parser.add_argument("file", help="Path to PDF file")
     parser.add_argument("--dpi", type=int, default=200, help="Render DPI (default: 200)")
+    parser.add_argument("--num-predict", type=int, default=4096, help="Max tokens the model can generate per OCR page. Raise to 8192+ for dense textbook pages to avoid silent truncation (default: 4096)")
     return parser.parse_args()
 
 
@@ -254,7 +258,7 @@ if __name__ == "__main__":
         exit(1)
     ocr_model = ask_model(vision_models, label="vision model")
 
-    text, token, page_count = ocr_pdf(args.file, dpi=args.dpi)
+    text, token, page_count = ocr_pdf(args.file, dpi=args.dpi, num_predict=args.num_predict)
     eject_model(ocr_model)
     save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
 
