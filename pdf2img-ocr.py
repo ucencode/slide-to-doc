@@ -106,7 +106,7 @@ def ocr_pdf(path: str, dpi: int = 200) -> str:
         full_text.append(f"--- Page {i+1} ---\n{text}")
 
     print(f"\n[ocr] completed in {time.time() - start_total:.2f}s")
-    return "\n\n".join(full_text), total_tokens
+    return "\n\n".join(full_text), total_tokens, len(pages)
 
 
 def extract_page(i: int, page, total_pages: int, ocr_model: str) -> tuple[str, int]:
@@ -217,19 +217,29 @@ def parse_args():
 
 
 # ── output ─────────────────────────────────────────────────
-def save_outputs(raw: str, compiled: str | None, timestamp: str):
+def save_raw(text: str, timestamp: str, file: str, pages: int, dpi: int, model: str):
     os.makedirs("./outputs", exist_ok=True)
-
     raw_path = f"./outputs/{timestamp}-raw.txt"
+    metadata = f"""---
+file: {os.path.basename(file)}
+timestamp: {timestamp}
+pages: {pages}
+dpi: {dpi}
+model: {model}
+---
+
+"""
     with open(raw_path, "w") as f:
-        f.write(raw)
+        f.write(metadata + text)
     print(f"[output] raw      → {raw_path}")
 
-    if compiled:
-        compiled_path = f"./outputs/{timestamp}-compiled.txt"
-        with open(compiled_path, "w") as f:
-            f.write(compiled)
-        print(f"[output] compiled → {compiled_path}")
+
+def save_refined(text: str, timestamp: str):
+    os.makedirs("./outputs", exist_ok=True)
+    compiled_path = f"./outputs/{timestamp}-compiled.txt"
+    with open(compiled_path, "w") as f:
+        f.write(text)
+    print(f"[output] compiled → {compiled_path}")
 
 
 # ── main ───────────────────────────────────────────────────
@@ -244,22 +254,20 @@ if __name__ == "__main__":
         exit(1)
     ocr_model = ask_model(vision_models, label="vision model")
 
-    text, token = ocr_pdf(args.file, dpi=args.dpi)
+    text, token, page_count = ocr_pdf(args.file, dpi=args.dpi)
     eject_model(ocr_model)
+    save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
 
     mode = ask_mode(text.split("\n\n"), token)
 
-    if mode == "skip":
-        save_outputs(text, None, timestamp)
-    else:
+    if mode != "skip":
         refine_models = list_models(REFINE_MODEL_KEYWORDS)
         if not refine_models:
             print("[error] no refine models found. check REFINE_MODEL_KEYWORDS.")
-            save_outputs(text, None, timestamp)
         else:
             model = ask_model(refine_models, label="refine model")
             lang = ask_language()
             compiled_text = refine(text, mode, lang, model)
-            save_outputs(text, compiled_text, timestamp)
+            save_refined(compiled_text, timestamp)
 
     print("\n[done]")
