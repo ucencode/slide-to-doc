@@ -29,8 +29,10 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 - for multi-column layouts, transcribe left to right, top to bottom
 - if text is partially visible or unclear, mark with [unclear: best guess] or [illegible]
 - for images or diagrams, describe with [image: clear description of the visual content]
+- for screenshots of application interfaces or terminal output, transcribe all visible text within the screenshot as-is, prefixed with [screenshot: brief description of the application/interface]
+- ignore decorative elements: background images, borders, watermarks, repeated logos, slide templates
 - if the image contains no text, return [no text detected]
-- output only the transcribed text and permitted markers ([unclear: ...], [illegible], [image: ...], [no text detected])
+- output only the transcribed text and permitted markers ([unclear: ...], [illegible], [image: ...], [screenshot: ...], [no text detected])
 - do not interpret, explain, or summarize beyond what is specified above"""
 
 REFINE_PROMPTS = {
