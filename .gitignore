@@ -20,6 +20,10 @@ build/
 outputs/*
 !outputs/.gitkeep
 
+# Presets (keep example only)
+presets/*
+!presets/example.toml
+
 # OS
 .DS_Store
 Thumbs.db

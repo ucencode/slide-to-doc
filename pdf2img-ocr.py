@@ -285,38 +285,42 @@ def parse_args():
     parser = argparse.ArgumentParser(description="PDF OCR Pipeline")
     parser.add_argument("file", help="Path to PDF file")
     parser.add_argument("--dpi", type=int, default=200, help="Render DPI (default: 200)")
-    parser.add_argument("--load-default", action="store_true",
-                        help="Load defaults from default.toml, skip interactive prompts")
+    parser.add_argument("--preset", type=str, metavar="FILE",
+                        help="Load preset from presets/<FILE>, skip interactive prompts")
     return parser.parse_args()
 
 
-def load_defaults() -> dict:
-    config_path = Path(__file__).parent / "default.toml"
+def load_preset(filename: str) -> dict:
+    preset_dir = Path(__file__).parent / "presets"
+    config_path = preset_dir / filename
     if not config_path.exists():
-        print(f"[error] config file not found: {config_path}")
+        available = [f.name for f in preset_dir.glob("*.toml")] if preset_dir.exists() else []
+        print(f"[error] preset not found: {config_path}")
+        if available:
+            print(f"[hint] available presets: {', '.join(sorted(available))}")
         exit(1)
     with open(config_path, "rb") as f:
         return tomllib.load(f)
 
 
-def check_defaults(config: dict) -> None:
+def check_preset(config: dict, filename: str) -> None:
     required = {"vision_model", "action", "lang", "level"}
     missing = required - config.keys()
     if missing:
-        print(f"[error] missing keys in default.toml: {', '.join(sorted(missing))}")
+        print(f"[error] missing keys in {filename}: {', '.join(sorted(missing))}")
         exit(1)
 
     valid_actions = {"skip", "clean", "summary", "deep"}
     if config["action"] not in valid_actions:
-        print(f"[error] invalid action '{config['action']}' in default.toml. Must be one of: {', '.join(sorted(valid_actions))}")
+        print(f"[error] invalid action '{config['action']}' in {filename}. Must be one of: {', '.join(sorted(valid_actions))}")
         exit(1)
 
     if config["lang"] not in LANG_INSTRUCTION:
-        print(f"[error] invalid lang '{config['lang']}' in default.toml. Must be one of: {', '.join(LANG_INSTRUCTION.keys())}")
+        print(f"[error] invalid lang '{config['lang']}' in {filename}. Must be one of: {', '.join(LANG_INSTRUCTION.keys())}")
         exit(1)
 
     if config["level"] not in AUDIENCE_INSTRUCTION:
-        print(f"[error] invalid level '{config['level']}' in default.toml. Must be one of: {', '.join(AUDIENCE_INSTRUCTION.keys())}")
+        print(f"[error] invalid level '{config['level']}' in {filename}. Must be one of: {', '.join(AUDIENCE_INSTRUCTION.keys())}")
         exit(1)
 
     available = _get_all_ollama_models()
@@ -327,7 +331,7 @@ def check_defaults(config: dict) -> None:
 
     if config["action"] != "skip":
         if "refine_model" not in config:
-            print("[error] missing key 'refine_model' in default.toml (required when action != skip)")
+            print(f"[error] missing key 'refine_model' in {filename} (required when action != skip)")
             exit(1)
         if config["refine_model"] not in available:
             print(f"[error] refine_model '{config['refine_model']}' not found in ollama. Available: {', '.join(sorted(available))}")
@@ -365,9 +369,9 @@ if __name__ == "__main__":
     args = parse_args()
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    if args.load_default:
-        config = load_defaults()
-        check_defaults(config)
+    if args.preset:
+        config = load_preset(args.preset)
+        check_preset(config, args.preset)
 
         ocr_model = config["vision_model"]
         print(f"[config] vision_model={ocr_model} action={config['action']} lang={config['lang']} level={config['level']}")
