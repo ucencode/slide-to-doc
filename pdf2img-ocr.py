@@ -97,6 +97,12 @@ LANG_INSTRUCTION = {
     "id": "Respond and deliver the output in Bahasa Indonesia."
 }
 
+AUDIENCE_INSTRUCTION = {
+    "beginner": "Assume the reader has no prior knowledge of the topic. Explain foundational concepts before building on them.",
+    "intermediate": "Assume the reader has basic familiarity with the topic. Focus on practical application over fundamentals.",
+    "advanced": "Assume the reader is experienced. Skip basics, focus on nuance and edge cases."
+}
+
 OCR_MODEL_KEYWORDS = ["qwen3.5", "qwen3-vl", "qwen2.5vl", "deepseek-ocr", "llama3.2-vision", "gemma4", "ministral-3", "glm-ocr"]
 REFINE_MODEL_KEYWORDS  = ["glm-5.1", "gemma4", "qwen3.5", "gpt-oss"]
 
@@ -223,10 +229,22 @@ def ask_language() -> str:
     lang = input(">>> ").strip().lower() or "id"
     return lang if lang in ("en", "id") else "id"
 
+def ask_audience() -> str:
+    print("""
+Audience level? (
+  1. beginner - explain from scratch
+  2. intermediate - some familiarity assumed
+  3. advanced - skip basics, focus on nuance
+) [default: intermediate]""")
+    choice = input(">>> ").strip() or "2"
+    return {"1": "beginner", "2": "intermediate", "3": "advanced"}.get(choice, "intermediate")
+
 
 # ── stage 2: refine ────────────────────────────────────────
-def refine(text: str, mode: str, lang: str, model: str) -> str:
+def refine(text: str, mode: str, lang: str, model: str, audience: str | None = None) -> str:
     prompt = REFINE_PROMPTS[mode] + "\n\n" + LANG_INSTRUCTION[lang]
+    if audience:
+        prompt += "\n\n" + AUDIENCE_INSTRUCTION[audience]
     temp = REFINE_TEMPERATURE.get(mode, 0)
     max_tokens = REFINE_MAX_TOKENS.get(mode, 8192)
     print(f"\n[refine] mode={mode} lang={lang} model={model} temp={temp} max_tokens={max_tokens}")
@@ -305,7 +323,8 @@ if __name__ == "__main__":
         else:
             model = ask_model(refine_models, label="refine model")
             lang = ask_language()
-            compiled_text = refine(text, mode, lang, model)
+            audience = ask_audience() if mode in ("summary", "deep") else None
+            compiled_text = refine(text, mode, lang, model, audience)
             save_refined(compiled_text, timestamp)
 
     print("\n[done]")
