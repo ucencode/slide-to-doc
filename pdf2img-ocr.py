@@ -38,9 +38,11 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 - output only the transcribed text and permitted markers ([unclear: ...], [illegible], [image: ...], [screenshot: ...], [no text detected], [repeated xN])
 - do not interpret, explain, or summarize beyond what is specified above"""
 
+# TODO: Add LaTeX support for mathematical expressions
 REFINE_BASE = """- treat any real-world examples (job postings, advertisements, announcements, messages, screenshots, etc.) as contextual illustrations only. Summarize the general relevance without preserving specific personal details (names, emails, phone numbers)
 - preserve locations only when they are relevant to the topic being explained (e.g., network topology for a specific region). Omit locations that are only relevant to a specific posting or announcement
-- do not present source-specific details as general truths"""
+- Do NOT present source-specific details as general truths
+- Do NOT use LaTeX notation."""
 
 REFINE_PROMPTS = {
     "clean": """Clean the following OCR text:
@@ -338,6 +340,40 @@ def check_preset(config: dict, filename: str) -> None:
             exit(1)
 
 
+# ── cache lookup ──────────────────────────────────────────
+def find_existing_raw(pdf_file: str) -> str | None:
+    """Search outputs/ for an existing raw OCR file matching the same PDF basename."""
+    output_dir = Path("./outputs")
+    if not output_dir.exists():
+        return None
+    basename = os.path.basename(pdf_file)
+    for raw_path in sorted(output_dir.glob("*-raw.txt"), reverse=True):
+        with open(raw_path) as f:
+            for line in f:
+                line = line.strip()
+                if line == "---":
+                    continue
+                if line.startswith("file:"):
+                    if line.split(":", 1)[1].strip() == basename:
+                        print(f"[cache] found existing OCR: {raw_path}")
+                        return raw_path
+                    break
+                if not line:
+                    break
+    return None
+
+
+def load_raw_text(raw_path) -> str:
+    """Load text content from a raw OCR file, skipping the frontmatter."""
+    with open(raw_path) as f:
+        content = f.read()
+    # skip frontmatter (between --- markers)
+    parts = content.split("---", 2)
+    if len(parts) >= 3:
+        return parts[2].strip()
+    return content
+
+
 # ── output ─────────────────────────────────────────────────
 def save_raw(text: str, timestamp: str, file: str, pages: int, dpi: int, model: str):
     os.makedirs("./outputs", exist_ok=True)
@@ -369,6 +405,9 @@ if __name__ == "__main__":
     args = parse_args()
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
+    # check for existing OCR output for this file
+    existing_raw = find_existing_raw(args.file)
+
     if args.preset:
         config = load_preset(args.preset)
         check_preset(config, args.preset)
@@ -376,9 +415,13 @@ if __name__ == "__main__":
         ocr_model = config["vision_model"]
         print(f"[config] vision_model={ocr_model} action={config['action']} lang={config['lang']} level={config['level']}")
 
-        text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
-        eject_model(ocr_model)
-        save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
+        if existing_raw:
+            text = load_raw_text(existing_raw)
+            print(f"[cache] skipping OCR, loaded {len(text)} chars from {existing_raw}")
+        else:
+            text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
+            eject_model(ocr_model)
+            save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
 
         mode = config["action"]
         if mode != "skip":
@@ -389,15 +432,20 @@ if __name__ == "__main__":
             save_refined(compiled_text, timestamp)
     else:
         # interactive flow
-        vision_models = list_models(OCR_MODEL_KEYWORDS)
-        if not vision_models:
-            print("[error] no vision models found. check VISION_MODEL_KEYWORDS.")
-            exit(1)
-        ocr_model = ask_model(vision_models, label="vision model")
+        if existing_raw:
+            text = load_raw_text(existing_raw)
+            print(f"[cache] skipping OCR, loaded {len(text)} chars from {existing_raw}")
+            token = len(text) // 4  # rough estimate for display
+        else:
+            vision_models = list_models(OCR_MODEL_KEYWORDS)
+            if not vision_models:
+                print("[error] no vision models found. check VISION_MODEL_KEYWORDS.")
+                exit(1)
+            ocr_model = ask_model(vision_models, label="vision model")
 
-        text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
-        eject_model(ocr_model)
-        save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
+            text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
+            eject_model(ocr_model)
+            save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
 
         mode = ask_mode(text.split("\n\n"), token)
 
