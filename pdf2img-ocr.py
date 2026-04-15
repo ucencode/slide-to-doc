@@ -4,6 +4,8 @@ import os
 import subprocess
 import time
 import argparse
+import tomllib
+from pathlib import Path
 from datetime import datetime
 from io import BytesIO
 
@@ -121,6 +123,19 @@ def list_models(keywords: list[str]) -> list[str]:
             models.append(name)
     return models
 
+
+def _get_all_ollama_models() -> set[str]:
+    result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"[error] 'ollama list' failed: {result.stderr.strip()}")
+        exit(1)
+    models = set()
+    for line in result.stdout.strip().splitlines()[1:]:
+        name = line.split()[0]
+        models.add(name)
+    return models
+
+
 # ── stage 1: OCR ───────────────────────────────────────────
 def ocr_pdf(path: str, ocr_model: str, dpi: int = 200) -> tuple[list[str], int, int]:
     print(f"[init] loading PDF: {path}")
@@ -225,9 +240,9 @@ def ask_model(models: list[str], label: str = "model") -> str:
         return models[0]
 
 def ask_language() -> str:
-    print("\nLanguage for compiled output? (en / id) [default: id]")
-    lang = input(">>> ").strip().lower() or "id"
-    return lang if lang in ("en", "id") else "id"
+    print("\nLanguage for compiled output? (en / id) [default: en]")
+    lang = input(">>> ").strip().lower() or "en"
+    return lang if lang in ("en", "id") else "en"
 
 def ask_audience() -> str:
     print("""
@@ -235,7 +250,7 @@ Audience level? (
   1. beginner - explain from scratch
   2. intermediate - some familiarity assumed
   3. advanced - skip basics, focus on nuance
-) [default: intermediate]""")
+) [default: 2]""")
     choice = input(">>> ").strip() or "2"
     return {"1": "beginner", "2": "intermediate", "3": "advanced"}.get(choice, "intermediate")
 
@@ -247,7 +262,8 @@ def refine(text: str, mode: str, lang: str, model: str, audience: str | None = N
         prompt += "\n\n" + AUDIENCE_INSTRUCTION[audience]
     temp = REFINE_TEMPERATURE.get(mode, 0)
     max_tokens = REFINE_MAX_TOKENS.get(mode, 8192)
-    print(f"\n[refine] mode={mode} lang={lang} model={model} temp={temp} max_tokens={max_tokens}")
+    level_str = f" audience={audience}" if audience else ""
+    print(f"\n[refine] mode={mode} lang={lang}{level_str} model={model} temp={temp} max_tokens={max_tokens}")
     print(f"[refine] sending {len(text)} chars...", end=" ", flush=True)
 
     start = time.time()
@@ -269,7 +285,53 @@ def parse_args():
     parser = argparse.ArgumentParser(description="PDF OCR Pipeline")
     parser.add_argument("file", help="Path to PDF file")
     parser.add_argument("--dpi", type=int, default=200, help="Render DPI (default: 200)")
+    parser.add_argument("--load-default", action="store_true",
+                        help="Load defaults from default.toml, skip interactive prompts")
     return parser.parse_args()
+
+
+def load_defaults() -> dict:
+    config_path = Path(__file__).parent / "default.toml"
+    if not config_path.exists():
+        print(f"[error] config file not found: {config_path}")
+        exit(1)
+    with open(config_path, "rb") as f:
+        return tomllib.load(f)
+
+
+def check_defaults(config: dict) -> None:
+    required = {"vision_model", "action", "lang", "level"}
+    missing = required - config.keys()
+    if missing:
+        print(f"[error] missing keys in default.toml: {', '.join(sorted(missing))}")
+        exit(1)
+
+    valid_actions = {"skip", "clean", "summary", "deep"}
+    if config["action"] not in valid_actions:
+        print(f"[error] invalid action '{config['action']}' in default.toml. Must be one of: {', '.join(sorted(valid_actions))}")
+        exit(1)
+
+    if config["lang"] not in LANG_INSTRUCTION:
+        print(f"[error] invalid lang '{config['lang']}' in default.toml. Must be one of: {', '.join(LANG_INSTRUCTION.keys())}")
+        exit(1)
+
+    if config["level"] not in AUDIENCE_INSTRUCTION:
+        print(f"[error] invalid level '{config['level']}' in default.toml. Must be one of: {', '.join(AUDIENCE_INSTRUCTION.keys())}")
+        exit(1)
+
+    available = _get_all_ollama_models()
+
+    if config["vision_model"] not in available:
+        print(f"[error] vision_model '{config['vision_model']}' not found in ollama. Available: {', '.join(sorted(available))}")
+        exit(1)
+
+    if config["action"] != "skip":
+        if "refine_model" not in config:
+            print("[error] missing key 'refine_model' in default.toml (required when action != skip)")
+            exit(1)
+        if config["refine_model"] not in available:
+            print(f"[error] refine_model '{config['refine_model']}' not found in ollama. Available: {', '.join(sorted(available))}")
+            exit(1)
 
 
 # ── output ─────────────────────────────────────────────────
@@ -303,28 +365,47 @@ if __name__ == "__main__":
     args = parse_args()
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    # pick vision model
-    vision_models = list_models(OCR_MODEL_KEYWORDS)
-    if not vision_models:
-        print("[error] no vision models found. check VISION_MODEL_KEYWORDS.")
-        exit(1)
-    ocr_model = ask_model(vision_models, label="vision model")
+    if args.load_default:
+        config = load_defaults()
+        check_defaults(config)
 
-    text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
-    eject_model(ocr_model)
-    save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
+        ocr_model = config["vision_model"]
+        print(f"[config] vision_model={ocr_model} action={config['action']} lang={config['lang']} level={config['level']}")
 
-    mode = ask_mode(text.split("\n\n"), token)
+        text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
+        eject_model(ocr_model)
+        save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
 
-    if mode != "skip":
-        refine_models = list_models(REFINE_MODEL_KEYWORDS)
-        if not refine_models:
-            print("[error] no refine models found. check REFINE_MODEL_KEYWORDS.")
-        else:
-            model = ask_model(refine_models, label="refine model")
-            lang = ask_language()
-            audience = ask_audience() if mode in ("summary", "deep") else None
+        mode = config["action"]
+        if mode != "skip":
+            model = config["refine_model"]
+            lang = config["lang"]
+            audience = config["level"] if mode in ("summary", "deep") else None
             compiled_text = refine(text, mode, lang, model, audience)
             save_refined(compiled_text, timestamp)
+    else:
+        # interactive flow
+        vision_models = list_models(OCR_MODEL_KEYWORDS)
+        if not vision_models:
+            print("[error] no vision models found. check VISION_MODEL_KEYWORDS.")
+            exit(1)
+        ocr_model = ask_model(vision_models, label="vision model")
+
+        text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
+        eject_model(ocr_model)
+        save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
+
+        mode = ask_mode(text.split("\n\n"), token)
+
+        if mode != "skip":
+            refine_models = list_models(REFINE_MODEL_KEYWORDS)
+            if not refine_models:
+                print("[error] no refine models found. check REFINE_MODEL_KEYWORDS.")
+            else:
+                model = ask_model(refine_models, label="refine model")
+                lang = ask_language()
+                audience = ask_audience() if mode in ("summary", "deep") else None
+                compiled_text = refine(text, mode, lang, model, audience)
+                save_refined(compiled_text, timestamp)
 
     print("\n[done]")
