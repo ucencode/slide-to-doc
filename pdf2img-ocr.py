@@ -10,16 +10,28 @@ from io import BytesIO
 from pdf2image import convert_from_path
 from ollama import chat, ChatResponse
 
+# OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this image accurately.
+# - preserve original structure, hierarchy, and layout
+# - include all visible text: titles, subtitles, bullets, labels, captions
+# - maintain list formatting and indentation where present
+# - reproduce tables using plain text or markdown table format
+# - for multi-column layouts, transcribe left to right, top to bottom
+# - do not interpret, explain, or summarize
+# - do not add commentary or descriptions of images/diagrams
+# - if text is partially visible or unclear, make best effort
+# - output only the transcribed text, nothing else"""
+
 OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this image accurately.
 - preserve original structure, hierarchy, and layout
 - include all visible text: titles, subtitles, bullets, labels, captions
 - maintain list formatting and indentation where present
-- reproduce tables using plain text or markdown table format
+- reproduce tables using markdown table format
 - for multi-column layouts, transcribe left to right, top to bottom
-- do not interpret, explain, or summarize
-- do not add commentary or descriptions of images/diagrams
-- if text is partially visible or unclear, make best effort
-- output only the transcribed text, nothing else"""
+- if text is partially visible or unclear, mark with [unclear: best guess] or [illegible]
+- for images or diagrams, describe with [image: clear description of the visual content]
+- if the image contains no text, return [no text detected]
+- output only the transcribed text and permitted markers ([unclear: ...], [illegible], [image: ...], [no text detected])
+- do not interpret, explain, or summarize beyond what is specified above"""
 
 REFINE_PROMPTS = {
     "clean": """Clean the following OCR text:
