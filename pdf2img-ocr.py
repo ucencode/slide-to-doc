@@ -39,7 +39,9 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 - do not interpret, explain, or summarize beyond what is specified above"""
 
 # TODO: Add LaTeX support for mathematical expressions
-REFINE_BASE = """- treat any real-world examples (job postings, advertisements, announcements, messages, screenshots, etc.) as contextual illustrations only. Summarize the general relevance without preserving specific personal details (names, emails, phone numbers)
+REFINE_BASE = """- you are processing OCR output extracted from presentation slides. The source may be a lecture, meeting, competition, product pitch, or any other slide-based material.
+- treat [image: ...], [unclear: ...], [illegible], and [repeated xN] as structured markers from the OCR pipeline, not noise
+- treat any real-world examples (job postings, advertisements, announcements, messages, screenshots, etc.) as contextual illustrations only. Summarize the general relevance without preserving specific personal details (names, emails, phone numbers)
 - preserve locations only when they are relevant to the topic being explained (e.g., network topology for a specific region). Omit locations that are only relevant to a specific posting or announcement
 - Do NOT present source-specific details as general truths
 - Do NOT use LaTeX notation."""
