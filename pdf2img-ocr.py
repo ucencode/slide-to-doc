@@ -39,37 +39,50 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 - do not interpret, explain, or summarize beyond what is specified above"""
 
 # TODO: Add LaTeX support for mathematical expressions
-REFINE_BASE = """- you are processing OCR output extracted from presentation slides. The source may be a lecture, meeting, competition, product pitch, or any other slide-based material.
-- treat [image: ...], [unclear: ...], [illegible], and [repeated xN] as structured markers from the OCR pipeline, not noise
-- treat any real-world examples (job postings, advertisements, announcements, messages, screenshots, etc.) as contextual illustrations only. Summarize the general relevance without preserving specific personal details (names, emails, phone numbers)
-- preserve locations only when they are relevant to the topic being explained (e.g., network topology for a specific region). Omit locations that are only relevant to a specific posting or announcement
-- Do NOT present source-specific details as general truths
-- Do NOT use LaTeX notation."""
+REFINE_BASE = """- you are processing OCR output from presentation slides (lectures, meetings, \
+competitions, pitches, or similar). treat the input as structured slide content, not free-form text
+- treat [image: ...], [unclear: ...], [illegible], and [repeated xN] as structured OCR markers — preserve or handle them as the mode requires, never discard as noise
+- preserve page boundary markers exactly as they appear (e.g., --- Page N ---)
+- do NOT present source-specific details as general truths
+- do NOT use LaTeX notation
+- treat real-world examples (job postings, ads, announcements, screenshots, etc.) as contextual illustrations only — summarize relevance without preserving personal details (names, emails, phone numbers)
+- preserve locations only when relevant to the topic being explained; omit if tied only to a specific posting or announcement"""
 
 REFINE_PROMPTS = {
-    "clean": """Clean the following OCR text:
+    "clean": """Clean the following OCR text from presentation slides.
+
 """ + REFINE_BASE + """
+
+Cleaning rules:
 - fix OCR artifacts: misread characters (l/1, O/0, rn/m), broken words, stray symbols
-- fix all grammar/spelling errors for readability
-- merge sentences split across page boundaries
-- remove repeated headers, footers, and page numbers
-- preserve the original structure: headings, lists, paragraphs
+- fix grammar and spelling errors for readability
+- preserve page boundary markers (--- Page N ---) and all OCR markers ([image: ...], [unclear: ...], [repeated xN]) exactly as-is
+- preserve original structure: headings, lists, paragraphs, indentation
+- remove repeated headers, footers, and page numbers only if they are clearly decorative or auto-generated
+- do NOT merge content across page boundaries
 - do NOT rephrase, summarize, or add content
 - do NOT change the author's word choices or style
 
-Return clean readable text.""",
+Return clean, readable text with structure intact.""",
 
-    "summary": """Convert this into concise study notes:
+    "summary": """Convert the following presentation slide content into concise study notes.
+
 """ + REFINE_BASE + """
-- if the content follows a sequential, procedural, or step-by-step flow, preserve the original ordering
+
+Summary rules:
+- omit [image: ...] markers — extract meaning only if the diagram description contains relevant information
+- if content follows a sequential or procedural flow, preserve that ordering
 - otherwise, group related ideas by topic under clear headings
-- 5–8 bullets per heading, keep only key ideas and practical examples
+- 5–8 bullets per heading; keep only key ideas and practical examples
 - drop abstract filler and non-essential explanations
-- avoid academic language — use plain, direct wording
-- make it easy to scan and understand quickly""",
+- use plain, direct wording — avoid academic or formal language
+- make it easy to scan and review quickly""",
 
-    "deep": """Transform the content into a comprehensive, book-style document. Structure it as follows:
+    "deep": """Transform the following presentation slide content into a comprehensive, book-style document.
 
+""" + REFINE_BASE + """
+
+Output structure:
 # [Document Title]
 
 ## Introduction
@@ -79,23 +92,21 @@ Brief overview of what this document covers and why it matters.
 For each major topic or concept found in the content:
 
 ### [Subtopic / Key Concept]
-- Write in full prose paragraphs, not bullet points
-- Explain the concept thoroughly with context
-- Include real-world examples and analogies to aid understanding
-- Clarify the "why" behind each idea, not just the "what"
-- Connect ideas to each other where relevant
+Write in full prose paragraphs. Explain the concept thoroughly with context. Include
+real-world examples and analogies. Clarify the "why" behind each idea, not just the
+"what". Connect ideas to each other where relevant.
 
 ## Summary
 Recap the most important takeaways in a few paragraphs.
 
-Guidelines:
-""" + REFINE_BASE + """
-- Use proper Markdown headings (##, ###) to reflect document hierarchy
-- Write in clear, plain language — avoid academic jargon
-- Preserve all key information from the source; do not omit details
-- Expand on ideas only with widely accepted, verifiable information to make them fully understandable
-- If a topic is too niche or specialized to expand confidently, preserve the original content and append [needs review]
-- Do not use excessive bullet points — prefer flowing prose"""
+Writing rules:
+- treat [image: ...] descriptions as source content — expand on what the diagram illustrates
+- use proper Markdown headings (##, ###) to reflect document hierarchy
+- write in clear, plain language — avoid academic jargon
+- preserve all key information from the source; do not omit details
+- expand on ideas only with widely accepted, verifiable information
+- if a topic is too niche to expand confidently, preserve original content and append [needs review]
+- prefer flowing prose over bullet points"""
 }
 
 LANG_INSTRUCTION = {
