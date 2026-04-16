@@ -425,11 +425,12 @@ if __name__ == "__main__":
 
         mode = config["action"]
         if mode != "skip":
-            model = config["refine_model"]
+            refine_model = config["refine_model"]
             lang = config["lang"]
             audience = config["level"] if mode in ("summary", "deep") else None
-            compiled_text = refine(text, mode, lang, model, audience)
+            compiled_text = refine(text, mode, lang, refine_model, audience)
             save_refined(compiled_text, timestamp)
+            eject_model(refine_model)
     else:
         # interactive flow
         if existing_raw:
@@ -454,10 +455,11 @@ if __name__ == "__main__":
             if not refine_models:
                 print("[error] no refine models found. check REFINE_MODEL_KEYWORDS.")
             else:
-                model = ask_model(refine_models, label="refine model")
+                refine_model = ask_model(refine_models, label="refine model")
                 lang = ask_language()
                 audience = ask_audience() if mode in ("summary", "deep") else None
-                compiled_text = refine(text, mode, lang, model, audience)
+                compiled_text = refine(text, mode, lang, refine_model, audience)
                 save_refined(compiled_text, timestamp)
+                eject_model(refine_model)
 
     print("\n[done]")
