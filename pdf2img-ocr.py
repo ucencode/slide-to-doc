@@ -343,25 +343,31 @@ def check_preset(config: dict, filename: str) -> None:
 
 
 # ── cache lookup ──────────────────────────────────────────
-def find_existing_raw(pdf_file: str) -> str | None:
-    """Search outputs/ for an existing raw OCR file matching the same PDF basename."""
+def find_existing_raw(pdf_file: str, ocr_model: str) -> str | None:
+    """Search outputs/ for an existing raw OCR file matching the same PDF basename and model."""
     output_dir = Path("./outputs")
     if not output_dir.exists():
         return None
     basename = os.path.basename(pdf_file)
     for raw_path in sorted(output_dir.glob("*-raw.txt"), reverse=True):
         with open(raw_path) as f:
+            meta = {}
+            in_frontmatter = False
             for line in f:
                 line = line.strip()
                 if line == "---":
+                    if in_frontmatter:
+                        break
+                    in_frontmatter = True
                     continue
-                if line.startswith("file:"):
-                    if line.split(":", 1)[1].strip() == basename:
-                        print(f"[cache] found existing OCR: {raw_path}")
-                        return raw_path
+                if not in_frontmatter:
                     break
-                if not line:
-                    break
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    meta[key.strip()] = val.strip()
+            if meta.get("file") == basename and meta.get("model") == ocr_model:
+                print(f"[cache] found existing OCR: {raw_path}")
+                return raw_path
     return None
 
 
@@ -394,11 +400,24 @@ model: {model}
     print(f"[output] raw      → {raw_path}")
 
 
-def save_refined(text: str, timestamp: str):
+def save_refined(text: str, timestamp: str, *, origin: str, raw_file: str,
+                  model: str, mode: str, lang: str, level: str | None):
     os.makedirs("./outputs", exist_ok=True)
     compiled_path = f"./outputs/{timestamp}-compiled.txt"
+    level_num = {"beginner": 1, "intermediate": 2, "advanced": 3}.get(level, "n/a")
+    metadata = f"""---
+origin: {origin}
+file: {raw_file}
+timestamp: {timestamp}
+model: {model}
+mode: {mode}
+lang: {lang}
+level: {level_num}
+---
+
+"""
     with open(compiled_path, "w") as f:
-        f.write(text)
+        f.write(metadata + text)
     print(f"[output] compiled → {compiled_path}")
 
 
@@ -407,9 +426,6 @@ if __name__ == "__main__":
     args = parse_args()
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    # check for existing OCR output for this file
-    existing_raw = find_existing_raw(args.file)
-
     if args.preset:
         config = load_preset(args.preset)
         check_preset(config, args.preset)
@@ -417,6 +433,7 @@ if __name__ == "__main__":
         ocr_model = config["vision_model"]
         print(f"[config] vision_model={ocr_model} action={config['action']} lang={config['lang']} level={config['level']}")
 
+        existing_raw = find_existing_raw(args.file, ocr_model)
         if existing_raw:
             text = load_raw_text(existing_raw)
             print(f"[cache] skipping OCR, loaded {len(text)} chars from {existing_raw}")
@@ -431,21 +448,24 @@ if __name__ == "__main__":
             lang = config["lang"]
             audience = config["level"] if mode in ("summary", "deep") else None
             compiled_text = refine(text, mode, lang, refine_model, audience)
-            save_refined(compiled_text, timestamp)
+            raw_file = os.path.basename(str(existing_raw)) if existing_raw else f"{timestamp}-raw.txt"
+            save_refined(compiled_text, timestamp, origin=os.path.basename(args.file),
+                         raw_file=raw_file, model=refine_model, mode=mode, lang=lang, level=audience)
             eject_model(refine_model)
     else:
         # interactive flow
+        vision_models = list_models(OCR_MODEL_KEYWORDS)
+        if not vision_models:
+            print("[error] no vision models found. check VISION_MODEL_KEYWORDS.")
+            exit(1)
+        ocr_model = ask_model(vision_models, label="vision model")
+
+        existing_raw = find_existing_raw(args.file, ocr_model)
         if existing_raw:
             text = load_raw_text(existing_raw)
             print(f"[cache] skipping OCR, loaded {len(text)} chars from {existing_raw}")
             token = len(text) // 4  # rough estimate for display
         else:
-            vision_models = list_models(OCR_MODEL_KEYWORDS)
-            if not vision_models:
-                print("[error] no vision models found. check VISION_MODEL_KEYWORDS.")
-                exit(1)
-            ocr_model = ask_model(vision_models, label="vision model")
-
             text, token, page_count = ocr_pdf(args.file, ocr_model=ocr_model, dpi=args.dpi)
             eject_model(ocr_model)
             save_raw(text, timestamp, file=args.file, pages=page_count, dpi=args.dpi, model=ocr_model)
@@ -461,7 +481,9 @@ if __name__ == "__main__":
                 lang = ask_language()
                 audience = ask_audience() if mode in ("summary", "deep") else None
                 compiled_text = refine(text, mode, lang, refine_model, audience)
-                save_refined(compiled_text, timestamp)
+                raw_file = os.path.basename(str(existing_raw)) if existing_raw else f"{timestamp}-raw.txt"
+                save_refined(compiled_text, timestamp, origin=os.path.basename(args.file),
+                             raw_file=raw_file, model=refine_model, mode=mode, lang=lang, level=audience)
                 eject_model(refine_model)
 
     print("\n[done]")
