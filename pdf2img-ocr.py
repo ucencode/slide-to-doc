@@ -40,7 +40,7 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 - do not interpret, explain, or summarize beyond what is specified above"""
 
 # TODO: Add LaTeX support for mathematical expressions
-REFINE_BASE = """- you are processing OCR output from presentation slides (lectures, meetings, competitions, pitches, or similar). treat the input as structured slide content, not free-form text
+REFINE_BASE = """- you are processing OCR output from presentation slides (lectures, meetings, competitions, pitches, or similar)
 - treat [image: ...], [unclear: ...], [illegible], and [repeated xN] as structured OCR markers — preserve or handle them as the mode requires, never discard as noise
 - preserve page boundary markers exactly as they appear (e.g., --- Page N ---)
 - do NOT present source-specific details as general truths
