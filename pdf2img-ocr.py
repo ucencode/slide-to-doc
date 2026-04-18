@@ -41,8 +41,6 @@ OCR_PROMPT = """You are an expert OCR system. Transcribe all text from this imag
 
 # TODO: Add LaTeX support for mathematical expressions
 REFINE_BASE = """- you are processing OCR output from presentation slides (lectures, meetings, competitions, pitches, or similar)
-- treat [image: ...], [unclear: ...], [illegible], and [repeated xN] as structured OCR markers — preserve or handle them as the mode requires, never discard as noise
-- preserve page boundary markers exactly as they appear (e.g., --- Page N ---)
 - do NOT present source-specific details as general truths
 - do NOT use LaTeX notation
 - treat real-world examples (job postings, ads, announcements, screenshots, etc.) as contextual illustrations only — summarize relevance without preserving personal details (names, emails, phone numbers)
@@ -55,7 +53,7 @@ REFINE_PROMPTS = {
 
 Cleaning rules:
 - fix OCR artifacts: misread characters (l/1, O/0, rn/m), broken words, stray symbols
-- fix grammar and spelling errors for readability
+- fix grammar and spelling errors only where meaning is unclear or readability is significantly affected
 - preserve page boundary markers (--- Page N ---) and all OCR markers ([image: ...], [unclear: ...], [repeated xN]) exactly as-is
 - preserve original structure: headings, lists, paragraphs, indentation
 - remove repeated headers, footers, and page numbers only if they are clearly decorative or auto-generated
@@ -147,7 +145,7 @@ REFINE_MODEL_KEYWORDS  = ["glm-5.1", "gemma4", "qwen3.5", "gpt-oss"]
 
 REFINE_TEMPERATURE = {"clean": 0, "summary": 0, "deep": 0.4}
 
-REFINE_MAX_TOKENS = {"clean": 8192, "summary": 4096, "deep": 16384}
+REFINE_MAX_TOKENS = {"clean": 65536, "summary": 65536, "deep": 131072}
 
 
 # ── ollama model discovery ─────────────────────────────────
