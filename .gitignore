@@ -13,8 +13,9 @@ build/
 .vscode/
 .idea/
 
-# PDF input files
-*.pdf
+# Input files
+inputs/**
+!inputs/.gitkeep
 
 # Output files (keep folders, ignore content)
 outputs/**
